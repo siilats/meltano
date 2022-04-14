@@ -3,11 +3,13 @@ import logging
 import os
 import sys
 from contextlib import contextmanager, redirect_stderr, redirect_stdout, suppress
+from typing import Optional
 
-import click
+import structlog
 from async_generator import asynccontextmanager
 
-from .utils import capture_subprocess_output, remove_ansi_escape_sequences
+from .formatters import LEVELED_TIMESTAMPED_PRE_CHAIN
+from .utils import capture_subprocess_output
 
 
 class OutputLogger:
@@ -17,52 +19,44 @@ class OutputLogger:
         self.stderr = sys.stderr
 
         self.outs = {}
-        self._max_name_length = None
 
-    def out(self, name, stream=None, color=None):
-        if stream in (None, sys.stderr):
-            stream = self.stderr
-        elif stream is sys.stdout:
-            stream = self.stdout
+    def out(
+        self, name: str, logger=None, write_level: Optional[int] = logging.INFO
+    ) -> "Out":
+        """Obtain an Out instance for use as a logger or use for output capture.
 
-        out = Out(self, name, file=self.file, stream=stream, color=color)
+        Args:
+            name: name of this Out instance and to use in the name field.
+            logger: logger to temporarily add a handler too.
+            write_level: log level passed to underlying logger.log calls.
+
+        Returns:
+            An Out instance that will log anything written in to a
+            file by injecting a log handler, as well as to the provided logger.
+        """
+        if not logger:
+            logger = structlog.stdlib.get_logger()
+
+        out = Out(
+            self,
+            name,
+            logger=logger,
+            write_level=write_level,
+            file=self.file,
+        )
         self.outs[name] = out
-        self._max_name_length = None
-
         return out
-
-    @property
-    def max_name_length(self):
-        if self._max_name_length is None:
-            name_lengths = [len(name) for name in self.outs.keys()]
-            self._max_name_length = max(name_lengths, default=0)
-
-        return self._max_name_length
 
 
 class LineWriter:
-    NEWLINE = "\n"
-
     def __init__(self, out):
         self.__out = out
-        self.__skip_next_newline = False
 
     def __getattr__(self, name):
         return getattr(self.__out, name)
 
     def write(self, line):
-        # Pre 3.7, `logging.StreamHandler.emit` will
-        # write the message and terminator separately
-        if self.__skip_next_newline:
-            self.__skip_next_newline = False
-            if line == self.NEWLINE:
-                return
-
-        if not line.endswith(self.NEWLINE):
-            line = line + self.NEWLINE
-            self.__skip_next_newline = True
-
-        self.__out.writeline(line)
+        self.__out.writeline(line.rstrip())
 
 
 class FileDescriptorWriter:
@@ -77,60 +71,58 @@ class FileDescriptorWriter:
         return self.__out.isatty()
 
 
-class Out:
-    """
-    Simple Out class to log anything written in a stream to a file
-     and then also write it to the stream.
-    """
+class Out:  # noqa: WPS230
+    """Simple Out class to log anything written in a stream."""
 
-    def __init__(self, output_logger, name, file, stream, color="white"):
+    def __init__(
+        self,
+        output_logger: OutputLogger,
+        name: str,
+        logger: structlog.stdlib.BoundLogger,
+        write_level: int,
+        file: str,
+    ):
+        """Log anything written in a stream.
+
+        Args:
+            output_logger: the OutputLogger to use.
+            name: name of this Out instance and to use in the name field.
+            logger: logger to temporarily add a handler too.
+            write_level: log level passed to logger.log calls.
+            file: file to associate with the FileHandler to log to.
+        """
         self.output_logger = output_logger
+        self.logger = logger
         self.name = name
-        self.color = color
-
+        self.write_level = write_level
         self.file = file
-        self.stream = stream
 
         self.last_line = ""
 
-        self._prefix = None
-        self._max_name_length = None
-
     @property
-    def prefix(self):
-        max_name_length = self.output_logger.max_name_length
-        if self._prefix is None or self._max_name_length != max_name_length:
-            self._max_name_length = max_name_length
+    def redirect_log_handler(self) -> logging.Handler:
+        """Configure a logging.Handler suitable for redirecting logs too.
 
-            padding = max(max_name_length, 6)
-            padded_name = self.name.ljust(padding)
-            self._prefix = click.style(f"{padded_name} | ", fg=self.color)
-
-        return self._prefix
+        Returns:
+            logging.FileHandler using an uncolorized console formatter
+        """
+        formatter = structlog.stdlib.ProcessorFormatter(
+            processor=structlog.dev.ConsoleRenderer(colors=False),
+            foreign_pre_chain=LEVELED_TIMESTAMPED_PRE_CHAIN,
+        )
+        handler = logging.FileHandler(self.file)
+        handler.setFormatter(formatter)
+        return handler
 
     @contextmanager
     def line_writer(self):
         yield LineWriter(self)
 
     @contextmanager
-    def redirect_logging(self, format=None, ignore_errors=()):
+    def redirect_logging(self, ignore_errors=()):
+        """Redirect log entries to a temporarily added file handler."""
         logger = logging.getLogger()
-        original_log_handlers = logger.handlers
-
-        line_writer = LineWriter(self)
-        handler = logging.StreamHandler(line_writer)
-
-        if not format:
-            if logger.getEffectiveLevel() == logging.DEBUG:
-                format = "%(levelname)s %(message)s"
-            else:
-                format = "%(message)s"
-
-        formatter = logging.Formatter(fmt=format)
-        handler.setFormatter(formatter)
-
-        logger.handlers = [handler]
-
+        logger.addHandler(self.redirect_log_handler)
         try:
             yield
         except (KeyboardInterrupt, asyncio.CancelledError, *ignore_errors):
@@ -139,7 +131,7 @@ class Out:
             logger.error(str(err), exc_info=True)
             raise
         finally:
-            logger.handlers = original_log_handlers
+            logger.removeHandler(self.redirect_log_handler)
 
     @asynccontextmanager
     async def writer(self):
@@ -168,26 +160,10 @@ class Out:
             with redirect_stderr(stderr):
                 yield
 
-    def writeline(self, line):
+    def writeline(self, line: str) -> None:
+        """Write a line to the underlying structured logger, cleaning up any dangling control chars."""
         self.last_line = line
-
-        click.echo(self.prefix + line, nl=False, file=self)
-        self.flush()
-
-    def write(self, data):
-        self.stream.write(data)
-        self.file.write(remove_ansi_escape_sequences(data))
-        # always flush the file to keep it up to date with the stream
-        self.file.flush()
-
-    def flush(self):
-        self.stream.flush()
-        self.file.flush()
-
-    def isatty(self):
-        # Explicitly claim we're connected to a TTY to stop Click
-        # from stripping ANSI codes
-        return self.stream.isatty()
+        self.logger.log(self.write_level, line.rstrip(), name=self.name)
 
     async def _read_from_fd(self, read_fd):
         # Since we're redirecting our own stdout and stderr output,

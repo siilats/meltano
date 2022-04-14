@@ -1,11 +1,15 @@
+"""Various utilities for configuring logging in a meltano project."""
 import asyncio
 import logging
 import os
-import re
-import sys
 from contextlib import suppress
-from typing import Optional
+from logging import config as logging_config
+from typing import Dict, Optional
 
+import structlog
+import yaml
+
+from meltano.core.logging.formatters import LEVELED_TIMESTAMPED_PRE_CHAIN, TIMESTAMPER
 from meltano.core.project_settings_service import ProjectSettingsService
 
 try:
@@ -14,7 +18,7 @@ except ImportError:
     from typing_extensions import Protocol  # noqa:  WPS433,WPS440
 
 
-LEVELS = {
+LEVELS = {  # noqa: WPS407
     "debug": logging.DEBUG,
     "info": logging.INFO,
     "warning": logging.WARNING,
@@ -22,47 +26,127 @@ LEVELS = {
     "critical": logging.CRITICAL,
 }
 DEFAULT_LEVEL = "info"
-FORMAT = (
-    "[%(asctime)s] [%(process)d|%(threadName)10s|%(name)s] [%(levelname)s] %(message)s"
-)
+FORMAT = "[%(asctime)s] [%(process)d|%(threadName)10s|%(name)s] [%(levelname)s] %(message)s"  # noqa: WPS323
 
 
-def parse_log_level(log_level):
+def parse_log_level(log_level: Dict[str, int]) -> int:
+    """Parse a level descriptor into an logging level.
+
+    Args:
+        log_level: level descriptor.
+
+    Returns:
+        int: actual logging level.
+    """
     return LEVELS.get(log_level, LEVELS[DEFAULT_LEVEL])
 
 
+def read_config(config_file: Optional[str] = None) -> dict:
+    """Read a logging config yaml from disk.
+
+    Args:
+        config_file: path to the config file to read.
+
+    Returns:
+        dict: parsed yaml config
+    """
+    if config_file and os.path.exists(config_file):
+        with open(config_file) as cf:
+            return yaml.safe_load(cf.read())
+    else:
+        return None
+
+
+def default_config(log_level: str) -> dict:
+    """Generate a default logging config.
+
+    Args:
+        log_level: set log levels to provided level.
+
+    Returns:
+         dict: logging config suitable for use with logging.config.dictConfig
+    """
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "colored": {
+                "()": structlog.stdlib.ProcessorFormatter,
+                "processor": structlog.dev.ConsoleRenderer(colors=True),
+                "foreign_pre_chain": LEVELED_TIMESTAMPED_PRE_CHAIN,
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": log_level.upper(),
+                "formatter": "colored",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            "": {
+                "handlers": ["console"],
+                "level": log_level.upper(),
+                "propagate": True,
+            },
+            "snowplow_tracker.emitters": {
+                "handlers": ["console"],
+                "level": logging.ERROR,
+            },
+        },
+    }
+
+
 def setup_logging(project=None, log_level=DEFAULT_LEVEL):
+    """Configure logging for a meltano project.
+
+    Args:
+        project: the meltano project
+        log_level: set log levels to provided level.
+    """
     # Mimick Python 3.8's `force=True` kwarg to override any
     # existing logger handlers
     # See https://github.com/python/cpython/commit/cf67d6a934b51b1f97e72945b596477b271f70b8
     root = logging.getLogger()
-    for h in root.handlers[:]:
-        root.removeHandler(h)
-        h.close()
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+        handler.close()
+
+    log_level = DEFAULT_LEVEL.upper()
+    log_config = None
 
     if project:
         settings_service = ProjectSettingsService(project)
+        log_config = settings_service.get("cli.log_config")
         log_level = settings_service.get("cli.log_level")
 
-    logging.basicConfig(
-        stream=sys.stderr, format=FORMAT, level=parse_log_level(log_level)
+    config = read_config(log_config) or default_config(log_level)
+    logging_config.dictConfig(config)
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            TIMESTAMPER,
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
     )
-
-
-def remove_ansi_escape_sequences(line):
-    """
-    Remove ANSI escape sequences that are used for adding colors in
-     terminals, so that only the text is logged in a file
-    """
-    ansi_escape = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")
-    return ansi_escape.sub("", line)
 
 
 class SubprocessOutputWriter(Protocol):
     """SubprocessOutputWriter is a basic interface definition suitable for use with capture_subprocess_output."""
 
     def writelines(self, lines: str):
-        """Any type with a writelines method accepting a string could be used as an output writer."""
+        """Any type with a writelines method accepting a string could be used as an output writer.
+
+        Args:
+            lines: string to write
+        """
         pass
 
 
@@ -85,7 +169,7 @@ async def _write_line_writer(writer, line):
 
 async def capture_subprocess_output(
     reader: Optional[asyncio.StreamReader], *line_writers: SubprocessOutputWriter
-):
+) -> None:
     """Capture in real time the output stream of a suprocess that is run async.
 
     The stream has been set to asyncio.subprocess.PIPE and is provided using
@@ -94,6 +178,10 @@ async def capture_subprocess_output(
     As new lines are captured for reader, they are written to output_stream.
     This async function should be run with await asyncio.wait() while waiting
     for the subprocess to end.
+
+    Args:
+        reader: asyncio.StreamReader object that is the output stream of the subprocess.
+        line_writers: any object thats a StreamWriter or has a writelines method accepting a string.
     """
     while not reader.at_eof():
         line = await reader.readline()

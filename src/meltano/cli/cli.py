@@ -1,8 +1,9 @@
-import logging
+import logging  # noqa: D100
 import sys
-import warnings
+import warnings  # noqa: F401
 
 import click
+
 import meltano
 from meltano.core.behavior.versioned import IncompatibleVersionError
 from meltano.core.logging import LEVELS, setup_logging
@@ -14,34 +15,68 @@ logger = logging.getLogger(__name__)
 
 @click.group(invoke_without_command=True, no_args_is_help=True)
 @click.option("--log-level", type=click.Choice(LEVELS.keys()))
-@click.option("-v", "--verbose", count=True)
+@click.option(
+    "--log-config", type=str, help="Path to a python logging yaml config file."
+)
+@click.option("-v", "--verbose", count=True, help="Not used.")
+@click.option(
+    "--environment",
+    envvar="MELTANO_ENVIRONMENT",
+    help="Meltano environment name.",
+)
+@click.option(
+    "--no-environment", is_flag=True, default=False, help="Don't use any environment."
+)
 @click.version_option(version=meltano.__version__, prog_name="meltano")
 @click.pass_context
-def cli(ctx, log_level, verbose):
+def cli(  # noqa: WPS231
+    ctx,
+    log_level: str,
+    log_config: str,
+    verbose: int,
+    environment: str,
+    no_environment: bool,
+):  # noqa: WPS231
     """
-    Get help at https://www.meltano.com/docs/command-line-interface.html
+    ELT for the DataOps era.
+
+    \b\nRead more at https://www.meltano.com/docs/command-line-interface.html
     """
     if log_level:
         ProjectSettingsService.config_override["cli.log_level"] = log_level
 
+    if log_config:
+        ProjectSettingsService.config_override["cli.log_config"] = log_config
+
     ctx.ensure_object(dict)
     ctx.obj["verbosity"] = verbose
-
-    try:
+    try:  # noqa: WPS229
         project = Project.find()
         setup_logging(project)
 
         readonly = ProjectSettingsService(project).get("project_readonly")
         if readonly:
             project.readonly = True
-
         if project.readonly:
             logger.debug("Project is read-only.")
 
+        if no_environment or (environment and environment.lower() == "null"):
+            logger.info("No environment is active")
+
+        elif environment:
+            project.activate_environment(environment)
+            logger.info("Environment '%s' is active", environment)  # noqa: WPS323
+        elif project.meltano.default_environment:
+            project.activate_environment(project.meltano.default_environment)
+            logger.info(
+                "Environment '%s' is active",  # noqa: WPS323
+                project.meltano.default_environment,
+            )
+
         ctx.obj["project"] = project
-    except ProjectNotFound as err:
+    except ProjectNotFound:
         ctx.obj["project"] = None
-    except IncompatibleVersionError as err:
+    except IncompatibleVersionError:
         click.secho(
             "This Meltano project is incompatible with this version of `meltano`.",
             fg="yellow",

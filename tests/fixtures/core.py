@@ -4,35 +4,38 @@ import os
 import shutil
 from pathlib import Path
 
-import meltano.core.bundle
 import pytest
 import yaml
+
+from meltano.core import bundle
 from meltano.core.behavior.canonical import Canonical
 from meltano.core.compiler.project_compiler import ProjectCompiler
 from meltano.core.config_service import ConfigService
 from meltano.core.elt_context import ELTContextBuilder
+from meltano.core.environment_service import EnvironmentService
 from meltano.core.logging.job_logging_service import JobLoggingService
-from meltano.core.plugin import PluginRef, PluginType
-from meltano.core.plugin.project_plugin import ProjectPlugin
+from meltano.core.plugin import PluginType
 from meltano.core.plugin.settings_service import PluginSettingsService
 from meltano.core.plugin_discovery_service import PluginDiscoveryService
 from meltano.core.plugin_install_service import PluginInstallService
 from meltano.core.plugin_invoker import invoker_factory
 from meltano.core.project import Project
 from meltano.core.project_add_service import ProjectAddService
+from meltano.core.project_files import ProjectFiles
 from meltano.core.project_init_service import ProjectInitService
 from meltano.core.project_plugins_service import (
     PluginAlreadyAddedException,
     ProjectPluginsService,
 )
+from meltano.core.project_settings_service import ProjectSettingsService
 from meltano.core.schedule_service import ScheduleAlreadyExistsError, ScheduleService
 
 PROJECT_NAME = "a_meltano_project"
 
 
 @pytest.fixture(scope="class")
-def discovery():
-    with meltano.core.bundle.find("discovery.yml").open() as base:
+def discovery():  # noqa: WPS213
+    with bundle.find("discovery.yml").open() as base:
         discovery = yaml.safe_load(base)
 
     discovery[PluginType.EXTRACTORS].append(
@@ -74,6 +77,15 @@ def discovery():
                             "description": "a description of cmd",
                         },
                         "cmd-variant": "cmd-variant meltano",
+                        "test": {
+                            "args": "--test",
+                            "description": "Run tests",
+                        },
+                        "test_extra": {
+                            "args": None,
+                            "description": "Run extra tests",
+                            "executable": "test-extra",
+                        },
                     },
                 },
                 {
@@ -169,7 +181,32 @@ def discovery():
                     "args": "--option $ENV_VAR_ARG",
                     "executable": "other-utility",
                 },
+                "containerized": {
+                    "args": "",
+                    "container_spec": {
+                        "image": "mock-utils/mock",
+                        "ports": {
+                            "5000": "5000",
+                        },
+                        "volumes": ["$MELTANO_PROJECT_ROOT/example/:/usr/app/"],
+                    },
+                },
             },
+        }
+    )
+
+    discovery[PluginType.MAPPERS].append(
+        {
+            "name": "mapper-mock",
+            "namespace": "mapper_mock",
+            "variants": [
+                {
+                    "name": "meltano",
+                    "executable": "mapper-mock-cmd",
+                    "pip_url": "mapper-mock",
+                    "package_name": "mapper-mock",
+                }
+            ],
         }
     )
 
@@ -229,14 +266,14 @@ def plugin_invoker_factory(
 
 @pytest.fixture(scope="class")
 def add_model(project, plugin_install_service, project_add_service):
-    MODELS = [
+    models = [
         "model-carbon-intensity",
         "model-gitflix",
         "model-salesforce",
         "model-gitlab",
     ]
 
-    for model in MODELS:
+    for model in models:
         plugin = project_add_service.add(PluginType.MODELS, model)
         plugin_install_service.install_plugin(plugin)
 
@@ -247,11 +284,11 @@ def add_model(project, plugin_install_service, project_add_service):
         meltano["plugins"]["models"] = [
             model_def
             for model_def in meltano["plugins"]["models"]
-            if model_def["name"] not in MODELS
+            if model_def["name"] not in models
         ]
 
-    for model in MODELS:
-        shutil.rmtree(project.model_dir(model))
+    for created_model in models:
+        shutil.rmtree(project.model_dir(created_model))
 
 
 @pytest.fixture(scope="class")
@@ -377,6 +414,16 @@ def schedule(project, tap, target, schedule_service):
         return err.schedule
 
 
+@pytest.fixture(scope="function")
+def environment_service(project):
+    service = EnvironmentService(project)
+    yield service
+
+    # Cleanup: remove any added Environments
+    for environment in service.list_environments():
+        service.remove(environment.name)
+
+
 @pytest.fixture(scope="class")
 def elt_context_builder(project, project_plugins_service):
     return ELTContextBuilder(project, plugins_service=project_plugins_service)
@@ -396,6 +443,8 @@ def project(test_dir, project_init_service):
     with project.meltano_update() as meltano:
         meltano.plugins = Canonical()
 
+    ProjectSettingsService(project).set("snowplow.collector_endpoints", "[]")
+
     # cd into the new project root
     os.chdir(project.root)
 
@@ -406,3 +455,64 @@ def project(test_dir, project_init_service):
     os.chdir(test_dir)
     shutil.rmtree(project.root)
     logging.debug(f"Cleaned project at {project.root}")
+
+
+@pytest.fixture(scope="class")
+def project_files(test_dir, compatible_copy_tree):
+    project_init_service = ProjectInitService("a_multifile_meltano_project_core")
+    project = project_init_service.init(add_discovery=False)
+    logging.debug(f"Created new project at {project.root}")
+
+    current_dir = Path(__file__).parent
+    multifile_project_root = current_dir.joinpath("multifile_project/")
+
+    os.remove(project.meltanofile)
+    compatible_copy_tree(multifile_project_root, project.root)
+    # cd into the new project root
+    os.chdir(project.root)
+
+    yield ProjectFiles(root=project.root, meltano_file_path=project.meltanofile)
+
+    # clean-up
+    Project.deactivate()
+    os.chdir(test_dir)
+    shutil.rmtree(project.root)
+    logging.debug(f"Cleaned project at {project.root}")
+
+
+@pytest.fixture(scope="class")
+def mapper(project_add_service):
+    try:
+        return project_add_service.add(
+            PluginType.MAPPERS,
+            "mapper-mock",
+            variant="meltano",
+            mappings=[
+                {
+                    "name": "mock-mapping-0",
+                    "config": {
+                        "transformations": [
+                            {
+                                "field_id": "author_email",
+                                "tap_stream_name": "commits",
+                                "type": "MASK-HIDDEN",
+                            }
+                        ]
+                    },
+                },
+                {
+                    "name": "mock-mapping-1",
+                    "config": {
+                        "transformations": [
+                            {
+                                "field_id": "given_name",
+                                "tap_stream_name": "users",
+                                "type": "lowercase",
+                            }
+                        ]
+                    },
+                },
+            ],
+        )
+    except PluginAlreadyAddedException as err:
+        return err.plugin

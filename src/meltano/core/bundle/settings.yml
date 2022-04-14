@@ -19,7 +19,7 @@ settings:
   value: false
   env_specific: true
 - name: discovery_url
-  value: https://www.meltano.com/discovery.yml
+  value: https://discovery.meltano.com/discovery.yml
 - name: discovery_url_auth
 - name: elt.buffer_size
   kind: integer
@@ -41,6 +41,8 @@ settings:
     value: critical
   value: info
   env_specific: true
+- name: cli.log_config
+  value: logging.yaml
 
 # UI server
 - name: ui.bind_host
@@ -98,7 +100,7 @@ settings:
   env_specific: true
 - name: ui.analysis
   kind: boolean
-  value: true
+  value: false
 
 # UI customization
 - name: ui.logo_url
@@ -133,6 +135,11 @@ settings:
   kind: boolean
   value: false
   env: MAIL_DEBUG
+  env_specific: true
+- name: mail.sendgrid_unsubscribe_group_id
+  kind: integer
+  value: 12751
+  env: MAIL_SENDGRID_UNSUBSCRIBE_GROUP_ID
   env_specific: true
 
 # OAuth Service
@@ -177,3 +184,8 @@ settings:
 - name: tracking_ids.ui_embed
   value: UA-132758957-6
   env_aliases: [MELTANO_EMBED_TRACKING_ID]
+
+# Snowplow Tracking
+- name: snowplow.collector_endpoints
+  kind: array
+  value: ["https://sp.meltano.com"]

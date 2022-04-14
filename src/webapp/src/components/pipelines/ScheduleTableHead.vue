@@ -24,7 +24,7 @@ export default {
         Transform
       </th>
       <th>
-        Update Interval
+        Interval
       </th>
       <th v-if="hasStartDate">
         Start Date
@@ -33,7 +33,7 @@ export default {
         <th>
           Last Run
         </th>
-        <th class="has-text-right">
+        <th>
           Actions
         </th>
       </template>

@@ -1,9 +1,12 @@
+"""Config management CLI."""
+
 import json
 import tempfile
 from pathlib import Path
 
 import click
 import dotenv
+
 from meltano.core.db import project_engine
 from meltano.core.plugin import PluginType
 from meltano.core.plugin.error import PluginNotFoundError
@@ -13,7 +16,8 @@ from meltano.core.plugin_test_service import PluginTestServiceFactory
 from meltano.core.project import Project
 from meltano.core.project_plugins_service import ProjectPluginsService
 from meltano.core.project_settings_service import ProjectSettingsService
-from meltano.core.settings_service import SettingValueStore, StoreNotSupportedError
+from meltano.core.settings_service import SettingValueStore
+from meltano.core.settings_store import StoreNotSupportedError
 from meltano.core.utils import run_async
 
 from . import cli
@@ -21,16 +25,35 @@ from .params import pass_project
 from .utils import CliError
 
 
-@cli.group(invoke_without_command=True)
+@cli.group(
+    invoke_without_command=True, short_help="Display Meltano or plugin configuration."
+)
 @click.option(
     "--plugin-type", type=click.Choice(PluginType.cli_arguments()), default=None
 )
 @click.argument("plugin_name")
-@click.option("--format", type=click.Choice(["json", "env"]), default="json")
-@click.option("--extras", is_flag=True)
+@click.option(
+    "--format",
+    "config_format",
+    type=click.Choice(["json", "env"]),
+    default="json",
+)
+@click.option("--extras", is_flag=True, help="View or list only plugin extras.")
 @pass_project(migrate=True)
 @click.pass_context
-def config(ctx, project, plugin_type, plugin_name, format, extras):
+def config(  # noqa: WPS231
+    ctx,
+    project: Project,
+    plugin_type: str,
+    plugin_name: str,
+    config_format: str,
+    extras: bool,
+):
+    """
+    Display Meltano or plugin configuration.
+
+    \b\nRead more at https://docs.meltano.com/reference/command-line-interface#config
+    """
     plugin_type = PluginType.from_cli_argument(plugin_type) if plugin_type else None
 
     plugins_service = ProjectPluginsService(project)
@@ -45,12 +68,14 @@ def config(ctx, project, plugin_type, plugin_name, format, extras):
         else:
             raise
 
-    _, Session = project_engine(project)
+    _, Session = project_engine(project)  # noqa: N806
     session = Session()
     try:
         if plugin:
             settings = PluginSettingsService(
-                project, plugin, plugins_service=plugins_service
+                project,
+                plugin,
+                plugins_service=plugins_service,
             )
             invoker = PluginInvoker(project, plugin)
             run_async(invoker.prepare(session))
@@ -65,13 +90,13 @@ def config(ctx, project, plugin_type, plugin_name, format, extras):
         ctx.obj["invoker"] = invoker
 
         if ctx.invoked_subcommand is None:
-            if format == "json":
+            if config_format == "json":
                 process = extras is not True
-                config = settings.as_dict(
+                json_config = settings.as_dict(
                     extras=extras, process=process, session=session
                 )
-                print(json.dumps(config, indent=2))
-            elif format == "env":
+                click.echo(json.dumps(json_config, indent=2))
+            elif config_format == "env":
                 env = settings.as_env(extras=extras, session=session)
 
                 with tempfile.NamedTemporaryFile() as temp_dotenv:
@@ -81,124 +106,21 @@ def config(ctx, project, plugin_type, plugin_name, format, extras):
 
                     dotenv_content = Path(temp_dotenv.name).read_text()
 
-                print(dotenv_content, end="")
+                click.echo(dotenv_content)
     finally:
         session.close()
 
 
-@config.command()
-@click.argument("setting_name", nargs=-1, required=True)
-@click.argument("value")
-@click.option(
-    "--store",
-    type=click.Choice(SettingValueStore.writables()),
-    default=SettingValueStore.AUTO,
+@config.command(
+    "list",
+    short_help=(
+        "List all settings for the specified plugin with their names, environment variables, and current values."
+    ),
 )
-@click.pass_context
-def set(ctx, setting_name, value, store):
-    store = SettingValueStore(store)
-
-    try:
-        value = json.loads(value)
-    except json.JSONDecodeError:
-        pass
-
-    settings = ctx.obj["settings"]
-    session = ctx.obj["session"]
-
-    path = list(setting_name)
-    try:
-        value, metadata = settings.set_with_metadata(
-            path, value, store=store, session=session
-        )
-    except StoreNotSupportedError as err:
-        raise CliError(
-            f"{settings.label.capitalize()} setting '{path}' could not be set in {store.label}: {err}"
-        ) from err
-
-    name = metadata["name"]
-    store = metadata["store"]
-    click.secho(
-        f"{settings.label.capitalize()} setting '{name}' was set in {store.label}: {value!r}",
-        fg="green",
-    )
-
-    current_value, source = settings.get_with_source(name, session=session)
-    if source != store:
-        click.secho(
-            f"Current value is still: {current_value!r} (from {source.label})",
-            fg="yellow",
-        )
-
-
-@config.command()
-@click.argument("setting_name", nargs=-1, required=True)
-@click.option(
-    "--store",
-    type=click.Choice(SettingValueStore.writables()),
-    default=SettingValueStore.AUTO,
-)
-@click.pass_context
-def unset(ctx, setting_name, store):
-    store = SettingValueStore(store)
-
-    settings = ctx.obj["settings"]
-    session = ctx.obj["session"]
-
-    path = list(setting_name)
-    try:
-        metadata = settings.unset(path, store=store, session=session)
-    except StoreNotSupportedError as err:
-        raise CliError(
-            f"{settings.label.capitalize()} setting '{path}' in {store.label} could not be unset: {err}"
-        ) from err
-
-    name = metadata["name"]
-    store = metadata["store"]
-    click.secho(
-        f"{settings.label.capitalize()} setting '{name}' in {store.label} was unset",
-        fg="green",
-    )
-
-    current_value, source = settings.get_with_source(name, session=session)
-    if source is not SettingValueStore.DEFAULT:
-        click.secho(
-            f"Current value is now: {current_value!r} (from {source.label})",
-            fg="yellow",
-        )
-
-
-@config.command()
-@click.option(
-    "--store",
-    type=click.Choice(SettingValueStore.writables()),
-    default=SettingValueStore.AUTO,
-)
-@click.pass_context
-def reset(ctx, store):
-    store = SettingValueStore(store)
-
-    settings = ctx.obj["settings"]
-    session = ctx.obj["session"]
-
-    try:
-        metadata = settings.reset(store=store, session=session)
-    except StoreNotSupportedError as err:
-        raise CliError(
-            f"{settings.label.capitalize()} settings in {store.label} could not be reset: {err}"
-        ) from err
-
-    store = metadata["store"]
-    click.secho(
-        f"{settings.label.capitalize()} settings in {store.label} were reset",
-        fg="green",
-    )
-
-
-@config.command("list")
 @click.option("--extras", is_flag=True)
 @click.pass_context
 def list_settings(ctx, extras):
+    """List all settings for the specified plugin with their names, environment variables, and current values."""
     settings = ctx.obj["settings"]
     session = ctx.obj["session"]
 
@@ -276,6 +198,80 @@ def list_settings(ctx, extras):
         )
 
 
+@config.command()
+@click.option(
+    "--store",
+    type=click.Choice(SettingValueStore.writables()),
+    default=SettingValueStore.AUTO,
+)
+@click.pass_context
+def reset(ctx, store):
+    """Clear the configuration (back to defaults)."""
+    store = SettingValueStore(store)
+
+    settings = ctx.obj["settings"]
+    session = ctx.obj["session"]
+
+    try:
+        metadata = settings.reset(store=store, session=session)
+    except StoreNotSupportedError as err:
+        raise CliError(
+            f"{settings.label.capitalize()} settings in {store.label} could not be reset: {err}"
+        ) from err
+
+    store = metadata["store"]
+    click.secho(
+        f"{settings.label.capitalize()} settings in {store.label} were reset",
+        fg="green",
+    )
+
+
+@config.command()
+@click.argument("setting_name", nargs=-1, required=True)
+@click.argument("value")
+@click.option(
+    "--store",
+    type=click.Choice(SettingValueStore.writables()),
+    default=SettingValueStore.AUTO,
+)
+@click.pass_context
+def set(ctx, setting_name, value, store):  # noqa: WPS125
+    """Set the configurations' setting `<name>` to `<value>`."""
+    store = SettingValueStore(store)
+
+    try:
+        value = json.loads(value)
+    except json.JSONDecodeError:
+        pass
+
+    settings = ctx.obj["settings"]
+    session = ctx.obj["session"]
+
+    path = list(setting_name)
+    try:
+        value, metadata = settings.set_with_metadata(
+            path, value, store=store, session=session
+        )
+    except StoreNotSupportedError as err:
+        raise CliError(
+            f"{settings.label.capitalize()} setting '{path}' could not be set in {store.label}: {err}"
+        ) from err
+
+    name = metadata["name"]
+    store = metadata["store"]
+    click.secho(
+        f"{settings.label.capitalize()} setting '{name}' was set in {store.label}: {value!r}",
+        fg="green",
+    )
+
+    current_value, source = settings.get_with_source(name, session=session)
+    if source != store:
+        click.secho(
+            f"Current value is still: {current_value!r} (from {source.label})",
+            fg="yellow",
+        )
+
+
 @config.command("test")
 @click.pass_context
 def test(ctx):
@@ -297,3 +293,41 @@ def test(ctx):
         raise CliError("\n".join(("Plugin configuration is invalid", detail)))
 
     click.secho("Plugin configuration is valid", fg="green")
+
+
+@config.command()
+@click.argument("setting_name", nargs=-1, required=True)
+@click.option(
+    "--store",
+    type=click.Choice(SettingValueStore.writables()),
+    default=SettingValueStore.AUTO,
+)
+@click.pass_context
+def unset(ctx, setting_name, store):
+    """Unset the configurations' setting called `<name>`."""
+    store = SettingValueStore(store)
+
+    settings = ctx.obj["settings"]
+    session = ctx.obj["session"]
+
+    path = list(setting_name)
+    try:
+        metadata = settings.unset(path, store=store, session=session)
+    except StoreNotSupportedError as err:
+        raise CliError(
+            f"{settings.label.capitalize()} setting '{path}' in {store.label} could not be unset: {err}"
+        ) from err
+
+    name = metadata["name"]
+    store = metadata["store"]
+    click.secho(
+        f"{settings.label.capitalize()} setting '{name}' in {store.label} was unset",
+        fg="green",
+    )
+
+    current_value, source = settings.get_with_source(name, session=session)
+    if source is not SettingValueStore.DEFAULT:
+        click.secho(
+            f"Current value is now: {current_value!r} (from {source.label})",
+            fg="yellow",
+        )

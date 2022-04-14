@@ -31,7 +31,7 @@ export default function setup() {
       {
         text: 'Get Help',
         onClick: () => {
-          window.open('https://meltano.com/docs/getting-help.html')
+          window.open('https://docs.meltano.com/the-project/community')
         }
       },
       {
@@ -54,7 +54,7 @@ export default function setup() {
           text: 'Learn more',
           onClick: () => {
             window.open(
-              'https://www.meltano.com/docs/settings.html#send-anonymous-usage-stats'
+              'https://docs.meltano.com/reference/settings#send_anonymous_usage_stats'
             )
           }
         },

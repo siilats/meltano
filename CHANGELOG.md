@@ -14,7 +14,277 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 
 ### Fixes
 
+- [#3373](https://gitlab.com/meltano/meltano/-/issues/3373) Add missing `default_environment` key to the json schema definition for meltano.yml.
+
+- [#3324](https://gitlab.com/meltano/meltano/-/issues/3324) Change example git url for custom plugin to generic URL.
 ### Breaks
+
+## 1.99.0 - (2022-04-01)
+---
+### New
+
+- [#3103](https://gitlab.com/meltano/meltano/-/issues/3103) Allow users to set a default Environment in `meltano.yml`.
+- [#3318](https://gitlab.com/meltano/meltano/-/issues/3318) `meltano init` will ask for a project_name if none is passed during invocation.
+- [!2561](https://gitlab.com/meltano/meltano/-/merge_requests/2561) Add `dragon` command Easter egg.
+
+### Fixes
+
+- [#3233](https://gitlab.com/meltano/meltano/-/issues/3233) Fix issue related `meltano test` attempting to instantiate plugins that are not installed.
+- [#3347](https://gitlab.com/meltano/meltano/-/issues/3347) Fix an issue in `meltano run` on python 3.7 where an AttributeError exception would occur while closing stdin of a spawned subprocess.
+- [#3349](https://gitlab.com/meltano/meltano/-/issues/3349) Resolve missing `schedule` commands in anonymous usage tracking.
+- [#3264](https://gitlab.com/meltano/meltano/-/issues/3264) Fix broken links to http://docs.meltano.com.
+
+
+## 1.98.1 - (2022-03-14)
+---
+
+### Fixes
+
+- [#3334](https://gitlab.com/meltano/meltano/-/issues/3334) Set the `executable` of `meltano-map-transformer` to `meltano-map-transform`.
+
+## 1.98.0 - (2022-03-10)
+---
+
+### Changes
+
+- [#3316](https://gitlab.com/meltano/meltano/-/issues/3316) Improve the `meltano init` experience with beautified text and cleaner logging
+- [#3317](https://gitlab.com/meltano/meltano/-/issues/3317) Improve Snowplow documentation and simplify telemetry notification during `meltano init`
+- [#3319](https://gitlab.com/meltano/meltano/-/issues/3319) Limit Snowplow tracker logs to the command line to `ERROR` level by default.
+- [#3217](https://gitlab.com/meltano/meltano/-/issues/3217) Allow user to configure Sendgrid asm_group_id. _Thanks, **[@davesgonechina](https://gitlab.com/davesgonechina)**!_
+- [#3321](https://gitlab.com/meltano/meltano/-/issues/3321) Switch Snowplow tracker endpoint to `https`.
+
+### Fixes
+
+- [#3306](https://gitlab.com/meltano/meltano/-/issues/3306) Fix Environments bug where custom configuration values that were not defined either as a setting or custom configuration in the primary plugin definition were not passed to the plugin in the Environment context.
+
+
+## 1.97.0 - (2022-03-03)
+---
+
+### New
+
+- [#2527](https://gitlab.com/meltano/meltano/-/issues/2527), [#2528](https://gitlab.com/meltano/meltano/-/issues/2528) Add CRON interval mechanism and modal to `/pipelines` page.
+- [#3017](https://gitlab.com/meltano/meltano/-/issues/3017) Add Snowplow Tracking to Meltano.
+- [#3130](https://gitlab.com/meltano/meltano/-/issues/3130) Add support for incremental jobs to `meltano run`.
+
+### Changes
+
+- [#3282](https://gitlab.com/meltano/meltano/-/issues/3282) Expand `meltano elt` failure information to help new users find debug logging. _Thanks, **[Derek Visch](https://gitlab.com/vischous)**!_
+
+### Fixes
+
+- [#3289](https://gitlab.com/meltano/meltano/-/issues/3289) In `target-bigquery` default variant `adswerve`, set the default of the `merge_state_messages` setting to `false` so state objects are not merged by the target.
+- [#3301](https://gitlab.com/meltano/meltano/-/issues/3301) Fix a typo that causes requests to the `/install/batch` endpoint to fail.
+
+
+## 1.96.0 - (2022-02-18)
+---
+
+### New
+
+- [#2299](https://gitlab.com/meltano/meltano/-/issues/2299) Introduces stream map support for `meltano run` via a new Singer compatible Mapper plugin type.
+- [#2205](https://gitlab.com/meltano/meltano/-/issues/2205) Add Docker support via a new `container_spec` option for plugin commands.
+- [#2454](https://gitlab.com/meltano/meltano/-/issues/2454) Added support for the Great Expectations data validation utility.
+
+### Changes
+
+- [#3122](https://gitlab.com/meltano/meltano/-/issues/3122) Newly created Meltano projects are now initialized with default environments: `prod`, `staging`, and `dev`.
+
+### Fixes
+
+- [#3257](https://gitlab.com/meltano/meltano/-/issues/3257) Resolves installation failures by pinning `MarkupSafe` library version to `<2.1.0`.
+
+
+## 1.95.0 - (2022-02-11)
+---
+
+### Changes
+
+- [!2525](https://gitlab.com/meltano/meltano/-/merge_requests/2525) Updates the `discovery_url` default setting to use https://discovery.meltano.com/discovery.yml
+
+### Fixes
+
+- [#3190](https://gitlab.com/meltano/meltano/-/issues/3190) Fix `meltano test` bug where plugin name clashes with file bundle name
+
+
+## 1.94.0 - (2022-02-04)
+---
+
+### New
+
+ - [#1587](https://gitlab.com/meltano/meltano/-/issues/1587) Add "Retry" button to pipeline logs view and list when run failed
+
+
+## 1.93.0 - (2022-01-28)
+---
+
+### Changes
+
+- [#3176](https://gitlab.com/meltano/meltano/-/issues/3176) Support dbt v1.0
+- [!2504](https://gitlab.com/meltano/meltano/-/merge_requests/2504) Reorganized pipeline edit buttons in the UI
+- [!2464](https://gitlab.com/meltano/meltano/-/merge_requests/2464) Bump version of 'flatten-dict' library dependency. _Thanks to **[Robin Grenholm](https://gitlab.com/rgrenholm)**_ !
+
+### Fixes
+
+- [#3181](https://gitlab.com/meltano/meltano/-/issues/3181) Create an empty `output/` folder in new Meltano projects.
+- [#3180](https://gitlab.com/meltano/meltano/-/issues/3180) Fix env usage in discovery.yml and JSON schema
+- [#3169](https://gitlab.com/meltano/meltano/-/issues/3169) Meltano Upgrade CTA in UI has unnecessary link
+
+
+## 1.92.0 - (2022-01-21)
+---
+
+### Changes
+
+- [#2991](https://gitlab.com/meltano/meltano/-/issues/2991) Remove support for python 3.6. Bumps the base docker image to 3.8.
+
+### Fixes
+
+- [#3024](https://gitlab.com/meltano/meltano/-/issues/3024) Make `meltano upgrade` work when Meltano is installed with pipx.
+- [#3115](https://gitlab.com/meltano/meltano/-/issues/3115) Ensure multi-yaml `include_paths` are correctly referenced even if Meltano is not called from the root directory.
+- [#3167](https://gitlab.com/meltano/meltano/-/issues/3167) Add sub-schema for meltano.yml environments.
+- [#3024](https://gitlab.com/meltano/meltano/-/issues/3024) Make `meltano upgrade` work when Meltano is installed with pipx.
+- [#3161](https://gitlab.com/meltano/meltano/-/issues/3161) Make URLs in `--help` clickable.
+
+[#3161](https://gitlab.com/meltano/meltano/-/issues/3161) Make URLs in `--help` clickable.
+
+## 1.91.0 - (2022-01-13)
+---
+
+### New
+
+- [#3153](https://gitlab.com/meltano/meltano/-/issues/3153) Published JSON Schemas for `meltano.yml` and `discovery.yml`. _Thanks to **[Zachary Wynegar](https://gitlab.com/zdwynegar)** for the initial [MR  1804](https://gitlab.com/meltano/meltano/-/merge_requests/1804) and inspiration this!_
+- [#3001](https://gitlab.com/meltano/meltano/-/issues/3001) Always print log advice on ELT failure.
+
+### Fixes
+
+- [#3132](https://gitlab.com/meltano/meltano/-/issues/3132) Bump `pyhumps` dependency to fix a bug in converting `SCREAMING_SNAKE_CASE` variables in the API.
+- [#3116](https://gitlab.com/meltano/meltano/-/issues/3116) Fix a unicode decode issue during discovery when debug logging is enabled.
+- [#2716](https://gitlab.com/meltano/meltano/-/issues/2716) Add `--help `docs for all Meltano CLI commands and options.
+
+## 1.90.1 - (2021-12-16)
+---
+
+### Fixes
+
+- [#3124](https://gitlab.com/meltano/meltano/-/issues/3124) Fix an error in `meltano run` invocations where tap discover calls triggered an exception.
+
+
+## 1.90.0 - (2021-12-15)
+---
+
+### New
+
+- [#2301](https://gitlab.com/meltano/meltano/-/issues/2301), [#3043](https://gitlab.com/meltano/meltano/-/issues/3043) Preview release of new [`meltano run`](https://docs.meltano.com/reference/command-line-interface#run) command.
+- [#2838](https://gitlab.com/meltano/meltano/-/issues/2838) Adds the [`meltano test`](https://docs.meltano.com/reference/command-line-interface#test) command which defines first-class test and validation capabilities for Meltano plugins and projects.
+
+### Changes
+
+- [#2967](https://gitlab.com/meltano/meltano/-/issues/2967) Set the `meltanolabs` variant as the default tap-google-analytics extractor.
+- [#3085](https://gitlab.com/meltano/meltano/-/issues/3085), [#3111](https://gitlab.com/meltano/meltano/-/issues/3111) Upgrade `target-bigquery` default variant `adswerve` to [`0.11.3`](https://github.com/adswerve/target-bigquery/releases/tag/0.11.3).
+- [#3113](https://gitlab.com/meltano/meltano/-/issues/3113) Pin tag [`v1.4.27`](https://gitlab.com/meltano/tap-salesforce/-/tags/v1.4.27) of `tap-salesforce` default variant `meltano`.
+- [#3119](https://gitlab.com/meltano/meltano/-/issues/3119) Bump `meltano` variant of `tap-salesforce` to tag [`v1.5.0`](https://gitlab.com/meltano/tap-salesforce/-/tags/v1.5.0).
+
+## 1.89.0 - (2021-12-02)
+---
+
+### New
+
+- [#3060](https://gitlab.com/meltano/meltano/-/issues/3060) Set `splitio` variant as the default tap-fastly extractor.
+- [#3076](https://gitlab.com/meltano/meltano/-/issues/3076) Set `transferwise` as the default target-postgres loader.
+- [#2967](https://gitlab.com/meltano/meltano/-/issues/2967) Set `meltanolabs` as the default tap-google-analytics extractor.
+
+### Changes
+
+- [#2772](https://gitlab.com/meltano/meltano/-/issues/2772) Transition to a new structured log format with support for additional formats like JSON and key=value, configurable via stock python logging yaml configs.
+- [#2443](https://gitlab.com/meltano/meltano/-/issues/2443) Bump dbt version to 0.21.1
+
+
+## 1.88.0 - (2021-11-18)
+---
+
+### New
+
+- [#3021](https://gitlab.com/meltano/meltano/-/issues/3021) Added CLI for high-level Environment management.
+
+- [#3003](https://gitlab.com/meltano/meltano/-/issues/3003) Add `matatika` variant of tap-solarvista extractor.
+
+## 1.87.1 - (2021-11-09)
+---
+
+### Changes
+
+- [#3042](https://gitlab.com/meltano/meltano/-/issues/3042) Hides non-default `meltano` variants from the UI.
+
+### Fixes
+
+- [#3015](https://gitlab.com/meltano/meltano/-/issues/3015) Add missing settings to default target-snowflake: `role`, `batch_wait_limit_seconds`, `archive_load_files`, `archive_load_files_s3_prefix`, and `archive_load_files_s3_bucket`
+- [#3047](https://gitlab.com/meltano/meltano/-/issues/3047) Don't fail if primary `meltano.yml` file is missing top-level entries.
+- [#3049](https://gitlab.com/meltano/meltano/-/issues/3049) Fix installation issues caused by breaking change in WTForms library v3.0.x.
+
+
+## 1.87.0 - (2021-11-05)
+---
+
+### New
+
+- [#2456](https://gitlab.com/meltano/meltano/-/issues/2456) Let project plugin definitions and config be defined in multiple individual YAML files. _Thanks, **[Matthew Thurman](https://gitlab.com/mathurmag)** for the inspiration and first draft!_
+
+
+### Breaks
+
+- [#2977](https://gitlab.com/meltano/meltano/-/issues/2977) Disable the Explore and Dashboards tabs in the UI by default.
+
+
+## 1.86.0 - (2021-10-28)
+---
+
+### New
+
+- [#2869](https://gitlab.com/meltano/meltano/-/issues/2869) Introduce top-level "Environments" within `meltano.yml`
+
+
+### Changes
+
+- [#2968](https://gitlab.com/meltano/meltano/-/issues/2968) Set `singer-io` as the default tap-marketo extractor.
+- [#2970](https://gitlab.com/meltano/meltano/-/issues/2970) Set `singer-io` as the default tap-stripe extractor.
+- [#2971](https://gitlab.com/meltano/meltano/-/issues/2971) Set `meltanolabs` as the default target-sqlite loader.
+
+### Fixes
+
+- [#3027](https://gitlab.com/meltano/meltano/-/issues/3027) Fixes an issue where elt invocation could hang if the tap produced large amounts of error output during discovery.
+
+
+## 1.85.0 - (2021-10-21)
+---
+
+### Changes
+
+- [#2986](https://gitlab.com/meltano/meltano/-/issues/2986) Set `transferwise` as the default target-snowflake loader.
+- [#2966](https://gitlab.com/meltano/meltano/-/issues/2966) Set `singer-io` as the default tap-adwords extractor.
+- [#2964](https://gitlab.com/meltano/meltano/-/issues/2964) Set `singer-io` as the default tap-facebook extractor.
+- [#2963](https://gitlab.com/meltano/meltano/-/issues/2963) Set `meltanolabs` as the default tap-csv extractor.
+- [#2965](https://gitlab.com/meltano/meltano/-/issues/2965) Set `meltanolabs` as the default tap-gitlab extractor.
+- [2339](https://gitlab.com/meltano/meltano/-/merge_requests/2339) Update `elt` log format to include subtask field. Lines are now prefixed with `<name> | <subtask>` which may cause issues with existing log parsers.
+
+
+### Fixes
+
+- [#2997](https://gitlab.com/meltano/meltano/-/issues/2997) Bump required version of `jsonschema`.
+
+
+## 1.84.0 - (2021-10-07)
+---
+
+### New
+
+- [#2357](https://gitlab.com/meltano/meltano/-/merge_requests/2357) Use dbt [`v0.21.0`](https://github.com/dbt-labs/dbt/releases/tag/v0.21.0) by default for new dbt installs
+- [2363](https://gitlab.com/meltano/meltano/-/merge_requests/2363), [2360](https://gitlab.com/meltano/meltano/-/merge_requests/2360) Small branding and logo updates throughout - and introducing Melty to the community!
+
+
+### Fixes
+
+- [2349](https://gitlab.com/meltano/meltano/-/merge_requests/2349) Fixes test extractor API endpoint to work with new PluginTestService. _Thanks, **[ReubenFrankel](https://gitlab.com/ReubenFrankel)**!_
 
 
 ## 1.83.0 - (2021-09-30)

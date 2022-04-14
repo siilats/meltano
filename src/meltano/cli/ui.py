@@ -1,21 +1,19 @@
-import asyncio
+"""Meltano UI CLI."""
+
 import logging
 import os
 import secrets
 import signal
-import subprocess
 
 import click
 from click_default_group import DefaultGroup
+
 from meltano.api.workers import APIWorker, MeltanoCompilerWorker, UIAvailableWorker
-from meltano.core.db import project_engine
-from meltano.core.migration_service import MigrationService
 from meltano.core.project_settings_service import (
     ProjectSettingsService,
     SettingValueStore,
 )
 from meltano.core.tracking import GoogleAnalyticsTracker
-from meltano.core.utils import truthy
 
 from . import cli
 from .params import pass_project
@@ -25,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_secure_setup(project):
+    """Verify UI security settings."""
     settings_service = ProjectSettingsService(project)
 
     if not settings_service.get("ui.authentication"):
@@ -36,7 +35,7 @@ def ensure_secure_setup(project):
         and settings_service.get("ui.session_cookie_domain") is None
     ):
         facts.append(
-            f"- Neither the 'ui.server_name' or 'ui.session_cookie_domain' setting has been set"
+            "- Neither the 'ui.server_name' or 'ui.session_cookie_domain' setting has been set"
         )
 
     secure_settings = ["ui.secret_key", "ui.password_salt"]
@@ -61,6 +60,8 @@ def ensure_secure_setup(project):
 
 
 def start_workers(workers):
+    """Start UI background workers."""
+
     def stop_all():
         logger.info("Stopping all background workers...")
         for worker in workers:
@@ -73,19 +74,30 @@ def start_workers(workers):
     return stop_all
 
 
-@cli.group(cls=DefaultGroup, default="start", default_if_no_args=True)
+@cli.group(
+    cls=DefaultGroup,
+    default="start",
+    default_if_no_args=True,
+    short_help="Start the Meltano UI webserver.",
+)
 @pass_project(migrate=True)
 @click.pass_context
 def ui(ctx, project):
+    """
+    Start the Meltano UI webserver.
+
+    \b\nRead more at https://docs.meltano.com/reference/command-line-interface#ui
+    """
     ctx.obj["project"] = project
 
 
-@ui.command()
+@ui.command(short_help="Start the Meltano UI webserver.")
 @click.option("--reload", is_flag=True, default=False)
 @click.option("--bind", help="The hostname (or IP address) to bind on")
 @click.option("--bind-port", help="Port to run webserver on", type=int)
 @click.pass_context
 def start(ctx, reload, bind, bind_port):
+    """Start the Meltano UI webserver."""
     if bind:
         ProjectSettingsService.config_override["ui.bind_host"] = bind
     if bind_port:
@@ -103,8 +115,8 @@ def start(ctx, reload, bind, bind_port):
         compiler_worker = MeltanoCompilerWorker(project)
         compiler_worker.compiler.compile()
         workers.append(compiler_worker)
-    except Exception as e:
-        logger.error(f"Initial compilation failed: {e}")
+    except Exception as exn:
+        logger.error(f"Initial compilation failed: {exn}")
 
     workers.append(UIAvailableWorker(project))
     workers.append(
@@ -113,20 +125,32 @@ def start(ctx, reload, bind, bind_port):
 
     cleanup = start_workers(workers)
 
-    def handle_terminate(signal, frame):
+    def handle_terminate(signal, frame):  # noqa: WPS442
         cleanup()
 
     signal.signal(signal.SIGTERM, handle_terminate)
     logger.info("All workers started.")
 
 
-@ui.command()
+@ui.command(short_help="Generate and store server name and secrets.")
 @click.argument("server_name")
-@click.option("--bits", default=256)
+@click.option(
+    "--bits",
+    default=256,  # noqa: WPS432
+    help="Specify the size of secrets in bits in the system DB (default 256)",
+)
 @click.pass_context
 def setup(ctx, server_name, **flags):
     """
-    Generates and stores server name and secrets.
+    Generate and store server name and secrets.
+
+    WARNING\n
+        Regenerating secrets will cause the following:
+
+        - All passwords will be invalid\n
+        - All sessions will be expired\n
+
+    Use with caution!
     """
     project = ctx.obj["project"]
     settings_service = ProjectSettingsService(project)
@@ -142,7 +166,8 @@ def setup(ctx, server_name, **flags):
             f"Found existing secrets in file '{ui_cfg_path}'. Please delete this file and rerun this command to regenerate the secrets."
         )
 
-    generate_secret = lambda: secrets.token_hex(int(flags["bits"] / 8))  # in bytes
+    def generate_secret():
+        return secrets.token_hex(int(flags["bits"] / 8))  # in bytes
 
     secret_settings = ["ui.secret_key", "ui.password_salt"]
     for setting_name in secret_settings:

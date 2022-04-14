@@ -1,3 +1,4 @@
+"""Main entry point for the meltano CLI."""
 import logging
 import os
 import sys
@@ -16,7 +17,9 @@ from . import (  # isort:skip # noqa: F401, WPS235
     add,
     config,
     discovery,
+    dragon,
     elt,
+    environment,
     initialize,
     install,
     invoke,
@@ -29,6 +32,8 @@ from . import (  # isort:skip # noqa: F401, WPS235
     ui,
     upgrade,
     user,
+    run,
+    validate,
 )
 
 setup_logging()
@@ -37,10 +42,11 @@ logger = logging.getLogger(__name__)
 
 
 def main():
+    """Entry point for the meltano cli."""
     # mark the current process as executed via the `cli`
     os.environ["MELTANO_JOB_TRIGGER"] = os.getenv("MELTANO_JOB_TRIGGER", "cli")
     try:
-        try:
+        try:  # noqa: WPS505
             cli(obj={"project": None})
         except ProjectReadonly as err:
             raise CliError(
@@ -50,6 +56,6 @@ def main():
             raise
         except Exception as err:
             raise CliError(str(err)) from err
-    except CliError as err:
-        err.print()
+    except CliError as cli_error:
+        cli_error.print()
         sys.exit(1)

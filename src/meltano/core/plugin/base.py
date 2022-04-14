@@ -1,16 +1,16 @@
-import copy
-import fnmatch
+"""Base class for all Meltano plugins."""
+
 import logging
 import re
-from collections import namedtuple
-from typing import Dict, Iterable, Optional, Union
+from typing import Dict, Optional, Union
 
 import yaml
+
 from meltano.core.behavior import NameEq
 from meltano.core.behavior.canonical import Canonical
 from meltano.core.behavior.hookable import HookObject
 from meltano.core.setting_definition import SettingDefinition, YAMLEnum
-from meltano.core.utils import NotFound, compact, find_named, flatten
+from meltano.core.utils import NotFound, find_named
 
 from .command import Command
 
@@ -44,6 +44,8 @@ class PluginType(YAMLEnum):
     TRANSFORMERS = "transformers"
     FILES = "files"
     UTILITIES = "utilities"
+    MAPPERS = "mappers"
+    MAPPINGS = "mappings"
 
     def __str__(self):
         return self.value
@@ -69,6 +71,8 @@ class PluginType(YAMLEnum):
             return self.singular
         if self is self.__class__.UTILITIES:
             return "utilize"
+        if self is self.__class__.MAPPERS:
+            return "map"
 
         return self.value[:-3]
 
@@ -78,8 +82,8 @@ class PluginType(YAMLEnum):
 
     @classmethod
     def cli_arguments(cls):
-        args = [type.singular for type in cls]
-        args.extend([type for type in cls])
+        args = [plugin_type.singular for plugin_type in cls]
+        args.extend([plugin_type for plugin_type in cls])
         return args
 
     @classmethod
@@ -169,8 +173,8 @@ class PluginDefinition(PluginRef):
 
         self._defaults["label"] = lambda p: p.name
 
-        def default_logo_url(p):
-            short_name = re.sub(r"^(tap|target)-", "", p.name)
+        def default_logo_url(plugin):
+            short_name = re.sub(r"^(tap|target)-", "", plugin.name)
             return f"/static/logos/{short_name}-logo.png"
 
         self._defaults["logo_url"] = default_logo_url
@@ -286,6 +290,15 @@ class BasePlugin(HookObject):
     def all_commands(self):
         """Return a dictonary of supported commands."""
         return self._variant.commands
+
+    @property
+    def test_commands(self) -> Dict[str, Command]:
+        """Return a the test command for this plugin."""
+        return {
+            name: command
+            for name, command in self.all_commands.items()
+            if name.startswith("test")
+        }
 
     @property
     def extra_settings(self):

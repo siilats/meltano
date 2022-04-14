@@ -7,10 +7,13 @@ import json
 import logging
 import shutil
 import sys
+from asyncio import Task
+from asyncio.streams import StreamReader
 from hashlib import sha1
 from pathlib import Path
 from typing import Tuple
 
+import structlog
 from jsonschema import Draft4Validator
 from meltano.core.behavior.hookable import hook
 from meltano.core.job import JobFinder, Payload
@@ -30,16 +33,33 @@ from .catalog import (
     select_metadata_rules,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.getLogger(__name__)
 
 
 async def _stream_redirect(
     stream: asyncio.StreamReader, file_like_obj, write_str=False
 ):
     """Redirect stream to a file like obj."""
+    encoding = sys.getdefaultencoding()
     while not stream.at_eof():
         data = await stream.readline()
-        file_like_obj.write(data.decode("ascii") if write_str else data)
+        file_like_obj.write(data.decode(encoding) if write_str else data)
+
+
+def _debug_logging_handler(
+    name: str, plugin_invoker: PluginInvoker, stderr: StreamReader
+) -> Task:
+    """Route debug log lines to stderr or an OutputLogger if one is present in our invocation context."""
+    if not plugin_invoker.context or not plugin_invoker.context.base_output_logger:
+        return asyncio.ensure_future(
+            _stream_redirect(stderr, sys.stderr, write_str=True)
+        )
+
+    out = plugin_invoker.context.base_output_logger.out(
+        name, logger.bind(type="discovery", stdio="stderr")
+    )
+    with out.line_writer() as outerr:
+        return asyncio.ensure_future(_stream_redirect(stderr, outerr, write_str=True))
 
 
 def config_metadata_rules(config):
@@ -260,7 +280,6 @@ class SingerTap(SingerPlugin):
         """
         catalog_path = plugin_invoker.files["catalog"]
         catalog_cache_key_path = plugin_invoker.files["catalog_cache_key"]
-
         if catalog_path.exists():
             try:
                 cached_key = catalog_cache_key_path.read_text()
@@ -321,22 +340,28 @@ class SingerTap(SingerPlugin):
 
         try:
             with catalog_path.open(mode="wb") as catalog:
+
+                # since we're using subproccess wait() - we need to ensure that that stderr's  buffer
+                # is drained regardless of whether or not we want the output.
+                if logger.isEnabledFor(logging.DEBUG):
+                    stderr_dst = asyncio.subprocess.PIPE
+                else:
+                    stderr_dst = asyncio.subprocess.DEVNULL
+
                 handle = await plugin_invoker.invoke_async(
                     "--discover",
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stderr=stderr_dst,
                     universal_newlines=False,
                 )
-
                 invoke_futures = [
                     asyncio.ensure_future(_stream_redirect(handle.stdout, catalog)),
                     asyncio.ensure_future(handle.wait()),
                 ]
-                if logger.isEnabledFor(logging.DEBUG):
+
+                if logger.isEnabledFor(logging.DEBUG) and handle.stderr:
                     invoke_futures.append(
-                        asyncio.ensure_future(
-                            _stream_redirect(handle.stderr, sys.stderr, write_str=True)
-                        )
+                        _debug_logging_handler(self.name, plugin_invoker, handle.stderr)
                     )
 
                 done, _ = await asyncio.wait(
