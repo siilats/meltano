@@ -17,6 +17,8 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 - [#3373](https://gitlab.com/meltano/meltano/-/issues/3373) Add missing `default_environment` key to the json schema definition for meltano.yml.
 
 - [#3324](https://gitlab.com/meltano/meltano/-/issues/3324) Change example git url for custom plugin to generic URL.
+- [#2928](https://gitlab.com/meltano/meltano/-/issues/2928) Fix tap discovery failure when tap produces IO on stderr
+
 ### Breaks
 
 ## 1.99.0 - (2022-04-01)
@@ -339,6 +341,22 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 
 - [#2906](https://gitlab.com/meltano/meltano/-/issues/2906) Increase speed of `meltano install` for already installed plugins
 * [#2906](https://gitlab.com/meltano/meltano/-/issues/2906) Increase speed of `meltano install` for already installed plugins
+
+### Changes
+
+- [#2897](https://gitlab.com/meltano/meltano/-/issues/2897) Refactor to move to asynchronous plugin executions and invocations
+
+### Fixes
+
+- [#2573](https://gitlab.com/meltano/meltano/-/issues/2573) Fix misleading error about missing `airflow.cfg` instead of missing Airflow executable
+
+
+## 1.80.0 - (2021-09-09)
+---
+
+### New
+
+- [#2906](https://gitlab.com/meltano/meltano/-/issues/2906) Increase speed of `meltano install` for already installed plugins
 
 ### Changes
 
